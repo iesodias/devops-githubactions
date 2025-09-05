@@ -1,14 +1,14 @@
 name: Push Trigger Workflow
 
-## Executa apenas em push
+### Executa apenas em push
 on:
   push:
     branches: 
       - main
-      - develop
-    paths:
-      - 'src/**'
-      - 'README.md'
+    #   - develop
+    # paths:
+    #   - 'src/**'
+    #   - 'README.md'
 
 jobs:
   push-job:
