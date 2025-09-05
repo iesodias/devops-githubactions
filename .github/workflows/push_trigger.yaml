@@ -5,10 +5,10 @@ on:
   push:
     branches: 
       - main
-    #   - develop
-    # paths:
-    #   - 'src/**'
-    #   - 'README.md'
+      - develop
+    paths:
+      - 'src/**'
+      - 'README.md'
 
 jobs:
   push-job:
