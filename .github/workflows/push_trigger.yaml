@@ -1,6 +1,6 @@
 name: Push Trigger Workflow
 
-# Executa apenas em push
+## Executa apenas em push
 on:
   push:
     branches: 
