@@ -1,4 +1,4 @@
-name: Jobs Paralelos
+name: Jobs com Dependências
 
 on:
   push:
@@ -6,87 +6,116 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Job 1: Análise de código
-  code-analysis:
+  # Job 1: Preparação (executa primeiro)
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      environment: ${{ steps.env.outputs.environment }}
     
     steps:
     - name: Checkout código
       uses: actions/checkout@v4
     
-    - name: Análise de sintaxe
+    - name: Determinar versão
+      id: version
       run: |
-        echo "🔍 Analisando sintaxe do código..."
+        VERSION="1.$(date +%Y%m%d).$(git rev-parse --short HEAD)"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📋 Versão definida: $VERSION"
+    
+    - name: Determinar ambiente
+      id: env
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          ENV="production"
+        else
+          ENV="staging"
+        fi
+        echo "environment=$ENV" >> $GITHUB_OUTPUT
+        echo "🌍 Ambiente: $ENV"
+
+  # Job 2: Testes (depende do setup)
+  tests:
+    runs-on: ubuntu-latest
+    needs: setup
+    
+    steps:
+    - name: Checkout código
+      uses: actions/checkout@v4
+    
+    - name: Mostrar informações do setup
+      run: |
+        echo "📋 Versão: ${{ needs.setup.outputs.version }}"
+        echo "🌍 Ambiente: ${{ needs.setup.outputs.environment }}"
+    
+    - name: Executar testes
+      run: |
+        echo "🧪 Executando testes para versão ${{ needs.setup.outputs.version }}..."
         sleep 3
-        echo "✅ Análise de sintaxe concluída"
-    
-    - name: Verificar padrões de código
-      run: |
-        echo "📏 Verificando padrões de código..."
-        sleep 2
-        echo "✅ Padrões verificados"
-    
-    - name: Upload relatório análise
-      run: |
-        echo "📤 Fazendo upload do relatório..."
-        echo "Relatório de análise gerado em $(date)" > analysis-report.txt
-        echo "✅ Relatório salvo"
+        echo "✅ Testes concluídos"
 
-  # Job 2: Testes unitários (executa em paralelo com code-analysis)
-  unit-tests:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout código
-      uses: actions/checkout@v4
-    
-    - name: Configurar ambiente de testes
-      run: |
-        echo "⚙️ Configurando ambiente de testes..."
-        sleep 2
-        echo "✅ Ambiente configurado"
-    
-    - name: Executar testes unitários
-      run: |
-        echo "🧪 Executando testes unitários..."
-        sleep 4
-        echo "✅ Todos os testes passaram (15/15)"
-    
-    - name: Gerar relatório de cobertura
-      run: |
-        echo "📊 Gerando relatório de cobertura..."
-        sleep 1
-        echo "✅ Cobertura: 85%"
-
-  # Job 3: Build da aplicação (executa em paralelo)
+  # Job 3: Build (depende do setup)
   build:
     runs-on: ubuntu-latest
+    needs: setup
     
     steps:
     - name: Checkout código
       uses: actions/checkout@v4
     
-    - name: Configurar ambiente de build
+    - name: Build da aplicação
       run: |
-        echo "🔧 Configurando ambiente de build..."
-        sleep 2
-        echo "✅ Ambiente configurado"
+        echo "🏗️ Building versão ${{ needs.setup.outputs.version }}..."
+        echo "🌍 Para ambiente: ${{ needs.setup.outputs.environment }}"
+        sleep 4
+        echo "✅ Build concluído"
     
-    - name: Compilar aplicação
+    - name: Criar artefato versionado
       run: |
-        echo "🏗️ Compilando aplicação..."
-        sleep 5
-        echo "✅ Build concluído com sucesso"
+        mkdir -p dist
+        echo "App version ${{ needs.setup.outputs.version }}" > dist/app-${{ needs.setup.outputs.version }}.txt
     
-    - name: Gerar artefatos
-      run: |
-        echo "📦 Gerando artefatos..."
-        mkdir -p build
-        echo "Aplicação compilada em $(date)" > build/app.jar
-        echo "✅ Artefatos gerados"
-    
-    - name: Upload artefatos
+    - name: Upload artefato
       uses: actions/upload-artifact@v4
       with:
-        name: build-artifacts
-        path: build/
+        name: app-${{ needs.setup.outputs.version }}
+        path: dist/
+
+  # Job 4: Deploy (depende dos testes E build)
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [setup, tests, build]
+    if: needs.setup.outputs.environment == 'production'
+    
+    steps:
+    - name: Download artefatos
+      uses: actions/download-artifact@v4
+      with:
+        name: app-${{ needs.setup.outputs.version }}
+        path: ./artifacts
+    
+    - name: Deploy para produção
+      run: |
+        echo "🚀 Fazendo deploy da versão ${{ needs.setup.outputs.version }}..."
+        echo "📦 Artefatos disponíveis:"
+        ls -la ./artifacts
+        sleep 3
+        echo "✅ Deploy concluído com sucesso!"
+
+  # Job 5: Notificação (sempre executa, independente do resultado)
+  notify:
+    runs-on: ubuntu-latest
+    needs: [setup, tests, build, deploy]
+    if: always()
+    
+    steps:
+    - name: Notificar resultado
+      run: |
+        echo "📬 Enviando notificação..."
+        echo "📋 Versão: ${{ needs.setup.outputs.version }}"
+        echo "🌍 Ambiente: ${{ needs.setup.outputs.environment }}"
+        echo "🧪 Testes: ${{ needs.tests.result }}"
+        echo "🏗️ Build: ${{ needs.build.result }}"
+        echo "🚀 Deploy: ${{ needs.deploy.result }}"
+        echo "✅ Notificação enviada"
