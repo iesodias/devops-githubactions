@@ -1,4 +1,4 @@
-name: Jobs com Dependências
+name: Matrix Strategy
 
 on:
   push:
@@ -6,116 +6,65 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Job 1: Preparação (executa primeiro)
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      environment: ${{ steps.env.outputs.environment }}
+  # Job com matrix para múltiplos ambientes
+  test-matrix:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      fail-fast: false  # Não para se um job falhar
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [16, 18, 20]
+        include:
+          # Configurações específicas
+          - os: ubuntu-latest
+            node-version: 20
+            experimental: true
+        exclude:
+          # Excluir combinações problemáticas
+          - os: windows-latest
+            node-version: 16
     
     steps:
     - name: Checkout código
       uses: actions/checkout@v4
     
-    - name: Determinar versão
-      id: version
+    - name: Informações da matrix
       run: |
-        VERSION="1.$(date +%Y%m%d).$(git rev-parse --short HEAD)"
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "📋 Versão definida: $VERSION"
+        echo "💻 OS: ${{ matrix.os }}"
+        echo "🟢 Node: ${{ matrix.node-version }}"
+        echo "🧪 Experimental: ${{ matrix.experimental }}"
     
-    - name: Determinar ambiente
-      id: env
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+    
+    - name: Verificar versões
       run: |
-        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-          ENV="production"
-        else
-          ENV="staging"
-        fi
-        echo "environment=$ENV" >> $GITHUB_OUTPUT
-        echo "🌍 Ambiente: $ENV"
-
-  # Job 2: Testes (depende do setup)
-  tests:
-    runs-on: ubuntu-latest
-    needs: setup
+        echo "Node version: $(node --version)"
+        echo "NPM version: $(npm --version)"
     
-    steps:
-    - name: Checkout código
-      uses: actions/checkout@v4
-    
-    - name: Mostrar informações do setup
+    - name: Executar testes específicos do OS
       run: |
-        echo "📋 Versão: ${{ needs.setup.outputs.version }}"
-        echo "🌍 Ambiente: ${{ needs.setup.outputs.environment }}"
-    
-    - name: Executar testes
-      run: |
-        echo "🧪 Executando testes para versão ${{ needs.setup.outputs.version }}..."
-        sleep 3
+        echo "🧪 Executando testes no ${{ matrix.os }} com Node ${{ matrix.node-version }}..."
+        sleep 2
         echo "✅ Testes concluídos"
+    
+    - name: Teste experimental
+      if: matrix.experimental == true
+      run: |
+        echo "🔬 Executando testes experimentais..."
+        sleep 1
+        echo "✅ Testes experimentais concluídos"
 
-  # Job 3: Build (depende do setup)
-  build:
+  # Job que coleta resultados da matrix
+  collect-results:
     runs-on: ubuntu-latest
-    needs: setup
+    needs: test-matrix
     
     steps:
-    - name: Checkout código
-      uses: actions/checkout@v4
-    
-    - name: Build da aplicação
+    - name: Coletar resultados
       run: |
-        echo "🏗️ Building versão ${{ needs.setup.outputs.version }}..."
-        echo "🌍 Para ambiente: ${{ needs.setup.outputs.environment }}"
-        sleep 4
-        echo "✅ Build concluído"
-    
-    - name: Criar artefato versionado
-      run: |
-        mkdir -p dist
-        echo "App version ${{ needs.setup.outputs.version }}" > dist/app-${{ needs.setup.outputs.version }}.txt
-    
-    - name: Upload artefato
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-${{ needs.setup.outputs.version }}
-        path: dist/
-
-  # Job 4: Deploy (depende dos testes E build)
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [setup, tests, build]
-    if: needs.setup.outputs.environment == 'production'
-    
-    steps:
-    - name: Download artefatos
-      uses: actions/download-artifact@v4
-      with:
-        name: app-${{ needs.setup.outputs.version }}
-        path: ./artifacts
-    
-    - name: Deploy para produção
-      run: |
-        echo "🚀 Fazendo deploy da versão ${{ needs.setup.outputs.version }}..."
-        echo "📦 Artefatos disponíveis:"
-        ls -la ./artifacts
-        sleep 3
-        echo "✅ Deploy concluído com sucesso!"
-
-  # Job 5: Notificação (sempre executa, independente do resultado)
-  notify:
-    runs-on: ubuntu-latest
-    needs: [setup, tests, build, deploy]
-    if: always()
-    
-    steps:
-    - name: Notificar resultado
-      run: |
-        echo "📬 Enviando notificação..."
-        echo "📋 Versão: ${{ needs.setup.outputs.version }}"
-        echo "🌍 Ambiente: ${{ needs.setup.outputs.environment }}"
-        echo "🧪 Testes: ${{ needs.tests.result }}"
-        echo "🏗️ Build: ${{ needs.build.result }}"
-        echo "🚀 Deploy: ${{ needs.deploy.result }}"
-        echo "✅ Notificação enviada"
+        echo "📊 Coletando resultados de todos os jobs da matrix..."
+        echo "✅ Todos os testes da matrix foram executados"
