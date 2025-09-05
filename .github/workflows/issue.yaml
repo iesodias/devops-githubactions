@@ -1,4 +1,7 @@
 name: Issue Trigger Workflow
+# Permissões para permitir comentários automáticos
+permissions:
+  issues: write
 
 # Executa quando issues são criadas, editadas ou fechadas
 on:
